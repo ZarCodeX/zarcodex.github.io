@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="icon" type="image/x-icon" href="img/icons/ZarCodeX - Round.png">
 
     <!-- Page Title -->
@@ -53,6 +53,8 @@
             padding: 0;
             box-sizing: border-box;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
         
         body {
@@ -147,6 +149,7 @@
             max-width: 400px;
             height: 300px;
             border: 1px solid #00fff5;
+            touch-action: none;
         }
         
         .controls {
@@ -225,6 +228,53 @@
             fill: none;
         }
         
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            width: 100%;
+            max-width: 300px;
+            margin-top: 15px;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .mobile-controls-row {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+        }
+        
+        .mobile-control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(0, 255, 245, 0.15);
+            border: 1px solid #00fff5;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        
+        .mobile-control-btn:active {
+            background: rgba(0, 255, 245, 0.3);
+            transform: scale(0.95);
+        }
+        
+        /* Swipe instructions */
+        .swipe-instructions {
+            display: none;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -236,7 +286,7 @@
             100% { transform: scale(1); }
         }
         
-        @media (max-width: 600px) {
+        @media (max-width: 768px) {
             .header h1 {
                 font-size: 5rem;
             }
@@ -247,6 +297,44 @@
             
             .game-canvas {
                 height: 250px;
+            }
+            
+            /* Show mobile controls on touch devices */
+            .mobile-controls {
+                display: flex;
+            }
+            
+            .swipe-instructions {
+                display: block;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 4rem;
+            }
+            
+            .header h2 {
+                font-size: 1.5rem;
+            }
+            
+            .header p {
+                font-size: 1rem;
+            }
+            
+            .game-canvas {
+                height: 200px;
+            }
+            
+            .mobile-control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+            
+            .score-box {
+                padding: 6px 12px;
+                font-size: 0.9rem;
             }
         }
     </style>
@@ -283,8 +371,22 @@
                 <button class="control-btn" id="resetBtn">Reset</button>
             </div>
             
+            <!-- Mobile Controls -->
+            <div class="mobile-controls">
+                <div class="mobile-controls-row">
+                    <div class="mobile-control-btn" id="upBtn">↑</div>
+                </div>
+                <div class="mobile-controls-row">
+                    <div class="mobile-control-btn" id="leftBtn">←</div>
+                    <div class="mobile-control-btn" id="downBtn">↓</div>
+                    <div class="mobile-control-btn" id="rightBtn">→</div>
+                </div>
+            </div>
+            
+            <p class="swipe-instructions">You can also swipe on the game area to control the snake</p>
+            
             <div class="game-instructions">
-                <p>Use <strong>ARROW KEYS</strong> to control the snake. Collect food to grow and earn points!</p>
+                <p>Use <strong>ARROW KEYS</strong> or <strong>TOUCH CONTROLS</strong> to control the snake. Collect food to grow and earn points!</p>
             </div>
         </div>
         
@@ -301,14 +403,23 @@
             const pauseBtn = document.getElementById('pauseBtn');
             const resetBtn = document.getElementById('resetBtn');
             
+            // Mobile control buttons
+            const upBtn = document.getElementById('upBtn');
+            const downBtn = document.getElementById('downBtn');
+            const leftBtn = document.getElementById('leftBtn');
+            const rightBtn = document.getElementById('rightBtn');
+            
             // Set canvas dimensions
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
+            function setCanvasSize() {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+            }
+            
+            setCanvasSize();
             
             // Game variables
             const gridSize = 20;
-            const gridWidth = Math.floor(canvas.width / gridSize);
-            const gridHeight = Math.floor(canvas.height / gridSize);
+            let gridWidth, gridHeight;
             let snake = [];
             let food = {};
             let direction = 'right';
@@ -319,11 +430,19 @@
             let gameRunning = false;
             let gamePaused = false;
             
+            // Touch variables
+            let touchStartX = null;
+            let touchStartY = null;
+            
             // Set high score
             highScoreElement.textContent = highScore;
             
             // Initialize game
             function initGame() {
+                // Calculate grid dimensions based on current canvas size
+                gridWidth = Math.floor(canvas.width / gridSize);
+                gridHeight = Math.floor(canvas.height / gridSize);
+                
                 // Initial snake position (center of canvas)
                 snake = [
                     {x: Math.floor(gridWidth / 2), y: Math.floor(gridHeight / 2)},
@@ -578,19 +697,101 @@
                 }
             }
             
+            // Handle touch events for swipe controls
+            function handleTouchStart(e) {
+                // Prevent default to avoid scrolling and browser interactions
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            }
+            
+            function handleTouchMove(e) {
+                if (!touchStartX || !touchStartY || !gameRunning || gamePaused) return;
+                
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const touchEndX = touch.clientX;
+                const touchEndY = touch.clientY;
+                
+                const dx = touchEndX - touchStartX;
+                const dy = touchEndY - touchStartY;
+                
+                // Minimum swipe distance to register
+                const minSwipeDistance = 30;
+                
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal swipe
+                    if (Math.abs(dx) > minSwipeDistance) {
+                        if (dx > 0 && direction !== 'left') {
+                            nextDirection = 'right';
+                        } else if (dx < 0 && direction !== 'right') {
+                            nextDirection = 'left';
+                        }
+                        touchStartX = null;
+                        touchStartY = null;
+                    }
+                } else {
+                    // Vertical swipe
+                    if (Math.abs(dy) > minSwipeDistance) {
+                        if (dy > 0 && direction !== 'up') {
+                            nextDirection = 'down';
+                        } else if (dy < 0 && direction !== 'down') {
+                            nextDirection = 'up';
+                        }
+                        touchStartX = null;
+                        touchStartY = null;
+                    }
+                }
+            }
+            
+            function handleTouchEnd() {
+                touchStartX = null;
+                touchStartY = null;
+            }
+            
             // Event listeners
             startBtn.addEventListener('click', startGame);
             pauseBtn.addEventListener('click', pauseGame);
             resetBtn.addEventListener('click', resetGame);
             document.addEventListener('keydown', handleKeydown);
             
+            // Mobile control button events
+            upBtn.addEventListener('click', () => {
+                if (direction !== 'down') nextDirection = 'up';
+            });
+            
+            downBtn.addEventListener('click', () => {
+                if (direction !== 'up') nextDirection = 'down';
+            });
+            
+            leftBtn.addEventListener('click', () => {
+                if (direction !== 'right') nextDirection = 'left';
+            });
+            
+            rightBtn.addEventListener('click', () => {
+                if (direction !== 'left') nextDirection = 'right';
+            });
+            
+            // Touch events for swipe controls
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+            canvas.addEventListener('touchend', handleTouchEnd);
+            canvas.addEventListener('touchcancel', handleTouchEnd);
+            
+            // Prevent context menu on mobile
+            canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+            });
+            
             // Initialize on load
             initGame();
             
             // Responsive canvas
             window.addEventListener('resize', () => {
-                canvas.width = canvas.offsetWidth;
-                canvas.height = canvas.offsetHeight;
+                setCanvasSize();
                 initGame();
             });
         });
